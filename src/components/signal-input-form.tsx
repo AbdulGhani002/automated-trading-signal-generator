@@ -24,7 +24,7 @@ import {
 import { CalendarIcon, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
-import type { Dispatch, type SetStateAction } from 'react';
+import { useState, useEffect, type Dispatch, type SetStateAction } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { handleProposeAndValidateSignal } from '@/app/actions';
 import type { ProposeAndValidateTradingSignalInput, ProposeAndValidateTradingSignalOutput } from '@/lib/types';
@@ -45,6 +45,12 @@ interface SignalInputFormProps {
 
 export function SignalInputForm({ setAiResponse, setIsLoading, onFormSubmit }: SignalInputFormProps) {
   const { toast } = useToast();
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
   const form = useForm<SignalFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -75,7 +81,7 @@ export function SignalInputForm({ setAiResponse, setIsLoading, onFormSubmit }: S
         });
       } else {
         toast({
-          variant: 'default', // Or 'destructive' if you prefer more emphasis
+          variant: 'default',
           title: 'AI Analysis Complete',
           description: `AI analyzed ${inputForAI.asset} but did not identify a strong trading signal at this time.`,
         });
@@ -126,11 +132,11 @@ export function SignalInputForm({ setAiResponse, setIsLoading, onFormSubmit }: S
                         !field.value && "text-muted-foreground"
                       )}
                     >
-                      {field.value ? (
-                        format(field.value, "PPP HH:mm:ss")
-                      ) : (
-                        <span>Pick a date and time</span>
-                      )}
+                      {isClient && field.value ? 
+                        format(field.value, "PPP HH:mm:ss") 
+                        : 
+                        (field.value ? <span>Loading date...</span> : <span>Pick a date and time</span>)
+                      }
                       <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                     </Button>
                   </FormControl>
@@ -138,7 +144,7 @@ export function SignalInputForm({ setAiResponse, setIsLoading, onFormSubmit }: S
                 <PopoverContent className="w-auto p-0" align="start">
                   <Calendar
                     mode="single"
-                    selected={field.value}
+                    selected={isClient ? field.value : undefined}
                     onSelect={(date) => {
                       if (date) {
                         const originalDate = field.value || new Date();
@@ -157,7 +163,7 @@ export function SignalInputForm({ setAiResponse, setIsLoading, onFormSubmit }: S
                     <Input
                       type="time"
                       step="1"
-                      value={field.value ? format(field.value, "HH:mm:ss") : ""}
+                      value={isClient && field.value ? format(field.value, "HH:mm:ss") : ""}
                       onChange={(e) => {
                         const timeParts = e.target.value.split(':');
                         const newDate = field.value ? new Date(field.value) : new Date();
@@ -186,3 +192,4 @@ export function SignalInputForm({ setAiResponse, setIsLoading, onFormSubmit }: S
     </Form>
   );
 }
+
