@@ -161,7 +161,3 @@ To stop the local development servers:
     *   Double-check that `DISCORD_WEBHOOK_URL` in your `.env` file is correct.
     *   Ensure your Discord server and channel permissions allow webhooks.
     *   Check the Next.js server terminal (where `npm run dev` is running) for any error messages from the `discord-service.ts`.
-
----
-
-Happy Trading Signal Hunting!
