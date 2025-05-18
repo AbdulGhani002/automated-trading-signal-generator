@@ -1,12 +1,13 @@
 
 'use server';
 /**
- * @fileOverview This file contains the Genkit flow for proposing and validating trading signals using AI.
- * It generates a signal identifier, trade direction, entry, SL, up to two TPs, reason, and a concise summary.
+ * @fileOverview This file contains the Genkit flow for proposing trading signals using AI.
+ * It generates a signal identifier, trade direction, entry, SL, up to two TPs, reason, timeframe, and exact timestamp.
+ * It also internally validates the signal and returns an 'isValid' flag.
  *
- * - proposeAndValidateTradingSignal - A function that proposes, validates, and summarizes a trading signal.
+ * - proposeAndValidateTradingSignal - A function that proposes a trading signal and includes an internal validity check.
  * - ProposeAndValidateTradingSignalInput - The input type.
- * - ProposeAndValidateTradingSignalOutput - The return type, including a structured signal and summary.
+ * - ProposeAndValidateTradingSignalOutput - The return type, including a structured signal and a validity flag.
  */
 
 import {ai} from '@/ai/genkit';
@@ -36,12 +37,11 @@ const ProposedSignalParametersSchema = z.object({
 // Schema for the full proposed signal, including original inputs for context
 const FullProposedSignalSchema = ProposedSignalParametersSchema.extend({
     asset: z.string().describe('The asset for the trading signal (e.g., AAPL or EUR/USD).'),
-    // exactTimestamp is already in ProposedSignalParametersSchema, renamed from 'timestamp'
 });
 export type FullProposedSignal = z.infer<typeof FullProposedSignalSchema>;
 
 
-// Schema for the validation outcome
+// Schema for the validation outcome (used internally by the flow)
 const ValidationOutcomeSchema = z.object({
   confidenceLevel: z
     .string()
@@ -55,20 +55,12 @@ const ValidationOutcomeSchema = z.object({
     ),
   isValid: z.boolean().describe('Whether the signal is deemed valid or not based on the confidence level (Medium or High).'),
 });
-export type ValidationOutcome = z.infer<typeof ValidationOutcomeSchema>;
-
-// Schema for the summary message
-const SignalSummarySchema = z.object({
-    shortMessage: z.string().describe('A very concise (1-2 sentences) summary of the trading signal (identifier, direction, entry, TP1, SL) and its validation (confidence, validity). Example: "AAPL - Momentum Surge: BUY @ 175 (TP1:180, SL:172). High confidence. Validated."')
-});
-export type SignalSummary = z.infer<typeof SignalSummarySchema>;
 
 
-// Output of the entire flow
+// Output of the entire flow - simplified
 const ProposeAndValidateTradingSignalOutputSchema = z.object({
   proposedSignal: FullProposedSignalSchema,
-  validationOutcome: ValidationOutcomeSchema,
-  summary: SignalSummarySchema,
+  isValid: z.boolean().describe('Whether the AI internally deemed the signal strong enough to propose (true if confidence is Medium or High).'),
 });
 export type ProposeAndValidateTradingSignalOutput = z.infer<typeof ProposeAndValidateTradingSignalOutputSchema>;
 
@@ -102,10 +94,10 @@ Approximate Timestamp: {{{timestamp}}}
 `,
 });
 
-// Prompt for validating the signal
+// Prompt for validating the signal (internal use)
 const validateSignalPrompt = ai.definePrompt({
-  name: 'validateGeneratedSignalPrompt',
-  input: {schema: FullProposedSignalSchema}, // Uses the full proposed signal structure
+  name: 'validateGeneratedSignalPromptInternal',
+  input: {schema: FullProposedSignalSchema}, 
   output: {schema: ValidationOutcomeSchema},
   prompt: `You are an AI assistant specialized in validating trading signals for financial assets.
   Analyze the following AI-generated trading signal:
@@ -121,35 +113,7 @@ const validateSignalPrompt = ai.definePrompt({
   Exact Signal Timestamp (UTC): {{{exactTimestamp}}}
 
   Assess its confidence level (High, Medium, or Low) based on historical success rates under similar market conditions and the strength of indicators.
-  Provide detailed reasoning. Indicate if the signal is valid (Medium or High confidence). Be conservative.`,
-});
-
-// Prompt for summarizing the signal and validation
-const summarizeSignalPrompt = ai.definePrompt({
-    name: 'summarizeSignalAndValidationPrompt',
-    input: { schema: z.object({ proposedSignal: FullProposedSignalSchema, validationOutcome: ValidationOutcomeSchema }) },
-    output: { schema: SignalSummarySchema },
-    prompt: `Based on the following proposed trading signal and its validation, generate a very concise (1-2 sentences) summary message.
-Format: "{{proposedSignal.signalIdentifier}}: {{proposedSignal.tradeDirection}} @ {{proposedSignal.entryPrice}} (TP1:{{proposedSignal.tp1}}{{#if proposedSignal.tp2}}, TP2:{{proposedSignal.tp2}}{{/if}}, SL:{{proposedSignal.sl}}). {{validationOutcome.confidenceLevel}} confidence. {{#if validationOutcome.isValid}}Validated.{{else}}Not validated.{{/if}}"
-
-Proposed Signal:
-Signal Identifier: {{{proposedSignal.signalIdentifier}}}
-Asset: {{{proposedSignal.asset}}}
-Timeframe: {{{proposedSignal.timeframe}}}
-Trade Direction: {{{proposedSignal.tradeDirection}}}
-Entry Price: {{{proposedSignal.entryPrice}}}
-Take Profit 1: {{{proposedSignal.tp1}}}
-{{#if proposedSignal.tp2}}Take Profit 2: {{{proposedSignal.tp2}}}{{/if}}
-Stop Loss: {{{proposedSignal.sl}}}
-Reason: {{{proposedSignal.reason}}}
-Exact Signal Timestamp (UTC): {{{proposedSignal.exactTimestamp}}}
-
-Validation Outcome:
-Confidence Level: {{{validationOutcome.confidenceLevel}}}
-Reasoning: {{{validationOutcome.reasoning}}}
-Is Valid: {{{validationOutcome.isValid}}}
-
-Generate the shortMessage.`,
+  Provide detailed reasoning. Indicate if the signal is valid (isValid: true for Medium or High confidence, false for Low). Be conservative.`,
 });
 
 
@@ -171,7 +135,7 @@ const proposeAndValidateTradingSignalFlow = ai.defineFlow(
 
     // Construct the full signal object for validation
     const fullProposedSignal: FullProposedSignal = {
-      asset: input.asset, // Keep original asset from user input for clarity
+      asset: input.asset, 
       signalIdentifier: proposedParams.signalIdentifier,
       timeframe: proposedParams.timeframe,
       tradeDirection: proposedParams.tradeDirection,
@@ -183,28 +147,17 @@ const proposeAndValidateTradingSignalFlow = ai.defineFlow(
       exactTimestamp: proposedParams.exactTimestamp,
     };
 
-    // Step 2: Validate the generated signal
+    // Step 2: Validate the generated signal (internally)
     const validationResult = await validateSignalPrompt(fullProposedSignal);
     const validationOutcome = validationResult.output;
 
     if (!validationOutcome) {
-      throw new Error('AI failed to validate the generated trading signal.');
-    }
-
-    // Step 3: Generate a concise summary
-    const summaryResult = await summarizeSignalPrompt({ proposedSignal: fullProposedSignal, validationOutcome });
-    const summary = summaryResult.output;
-
-    if (!summary) {
-        throw new Error('AI failed to generate the signal summary.');
+      throw new Error('AI failed to internally validate the generated trading signal.');
     }
 
     return {
       proposedSignal: fullProposedSignal,
-      validationOutcome: validationOutcome,
-      summary: summary,
+      isValid: validationOutcome.isValid,
     };
   }
 );
-
-    

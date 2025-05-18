@@ -1,3 +1,4 @@
+
 'use client';
 
 import type * as z from 'zod';
@@ -39,7 +40,6 @@ type SignalFormValues = z.infer<typeof formSchema>;
 interface SignalInputFormProps {
   setAiResponse: Dispatch<SetStateAction<ProposeAndValidateTradingSignalOutput | null>>;
   setIsLoading: Dispatch<SetStateAction<boolean>>;
-  // Callback to pass the input that initiated the AI call to the parent
   onFormSubmit: (input: ProposeAndValidateTradingSignalInput) => void;
 }
 
@@ -62,16 +62,24 @@ export function SignalInputForm({ setAiResponse, setIsLoading, onFormSubmit }: S
       timestamp: values.timestamp.toISOString(),
     };
 
-    onFormSubmit(inputForAI); // Pass input to parent before AI call
+    onFormSubmit(inputForAI); 
 
     const result = await handleProposeAndValidateSignal(inputForAI);
 
     if (result.success && result.data) {
       setAiResponse(result.data);
-      toast({
-        title: 'AI Proposal & Validation Complete',
-        description: `Proposed signal for ${result.data.proposedSignal.asset} is ${result.data.validationOutcome.isValid ? 'Valid' : 'Invalid'}. Confidence: ${result.data.validationOutcome.confidenceLevel}`,
-      });
+      if (result.data.isValid) {
+        toast({
+          title: 'AI Proposal Generated',
+          description: `AI has proposed a signal for ${result.data.proposedSignal.asset}.`,
+        });
+      } else {
+        toast({
+          variant: 'default', // Or 'destructive' if you prefer more emphasis
+          title: 'AI Analysis Complete',
+          description: `AI analyzed ${inputForAI.asset} but did not identify a strong trading signal at this time.`,
+        });
+      }
     } else {
       toast({
         variant: 'destructive',
@@ -172,7 +180,7 @@ export function SignalInputForm({ setAiResponse, setIsLoading, onFormSubmit }: S
         
         <Button type="submit" className="w-full md:w-auto" disabled={form.formState.isSubmitting || setIsLoading === undefined}>
           {(form.formState.isSubmitting) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Get AI Trade Proposal & Validation
+          Get AI Trade Proposal
         </Button>
       </form>
     </Form>

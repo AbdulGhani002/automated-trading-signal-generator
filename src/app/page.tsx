@@ -15,7 +15,7 @@ export default function HomePage() {
 
   const handleFormSubmit = (input: ProposeAndValidateTradingSignalInput) => {
     setLastUserInput(input);
-    setAiResponse(null); // Clear previous results
+    setAiResponse(null); 
   };
 
   return (
@@ -34,9 +34,8 @@ export default function HomePage() {
               <li>Propose precise <span className="font-semibold">Entry, Stop Loss, and up to two Take Profit levels</span>.</li>
               <li>Select an appropriate <span className="font-semibold">Timeframe</span> and <span className="font-semibold">Exact Signal Timestamp</span>.</li>
               <li>Provide a <span className="font-semibold">Reason</span> for the proposal.</li>
-              <li>Assess its <span className="font-semibold">Confidence Level</span> and <span className="font-semibold">Validity</span>.</li>
-              <li>Deliver a <span className="font-semibold">Concise Summary</span> of all findings.</li>
             </ul>
+             (The AI internally assesses signal strength before proposing.)
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -52,18 +51,30 @@ export default function HomePage() {
         <div className="flex flex-col items-center justify-center text-center p-10 border border-dashed rounded-lg bg-card/50">
           <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
           <p className="text-lg font-semibold text-primary">AI is Strategizing...</p>
-          <p className="text-muted-foreground">Crafting and validating a detailed trade proposal. This may take a moment.</p>
+          <p className="text-muted-foreground">Crafting a detailed trade proposal. This may take a moment.</p>
         </div>
       )}
 
-      {aiResponse && lastUserInput && !isLoading && (
+      {aiResponse && lastUserInput && !isLoading && aiResponse.isValid && ( // Only display if AI deems it valid
         <SignalDisplayCard 
           userInput={lastUserInput} 
           aiOutput={aiResponse} 
         />
       )}
+      
+      {aiResponse && !aiResponse.isValid && !isLoading && ( // Message if AI doesn't find a strong signal
+         <Card className="mt-8 shadow-md">
+            <CardContent className="p-6">
+              <div className="flex flex-col items-center justify-center text-center">
+                <Wand2 className="h-10 w-10 text-muted-foreground mb-3" />
+                <p className="text-lg font-semibold text-muted-foreground">No Strong Signal Found</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  The AI analyzed {lastUserInput?.asset} for the specified period but did not identify a high-confidence trading signal at this time.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+      )}
     </div>
   );
 }
-
-    

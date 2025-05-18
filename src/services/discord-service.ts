@@ -4,46 +4,32 @@
 import type { ProposeAndValidateTradingSignalInput, ProposeAndValidateTradingSignalOutput } from '@/lib/types';
 
 function formatDiscordMessage(
-  userInput: ProposeAndValidateTradingSignalInput, // userInput is kept for context if needed, though not directly used in the new format much
-  aiOutput: ProposeAndValidateTradingSignalOutput
+  // userInput is no longer needed for the message format
+  aiOutput: ProposeAndValidateTradingSignalOutput 
 ): string {
-  const { proposedSignal, validationOutcome, summary } = aiOutput;
-  const { asset: userAsset, timestamp: userTimestamp } = userInput;
+  const { proposedSignal } = aiOutput; // isValid is not used in the discord message
 
-  const formattedUserTimestamp = new Date(userTimestamp).toUTCString(); // User's approximate input timestamp
-  const formattedSignalTimestamp = new Date(proposedSignal.exactTimestamp).toUTCString(); // AI's exact signal timestamp
+  const formattedSignalTimestamp = new Date(proposedSignal.exactTimestamp).toLocaleString('en-US', {
+    year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'UTC', timeZoneName: 'short'
+  });
 
-  let message = `**New AI Trade Signal & Validation** 🚀\n\n`;
-
-  message += `**✨ Quick Summary:**\n\`\`\`${summary.shortMessage}\`\`\`\n\n`;
-  
-  message += `**User Input Context:**\n`;
-  message += `- Asset: \`${userAsset}\`\n`;
-  message += `- Approx. Timestamp (UTC): \`${formattedUserTimestamp}\`\n\n`;
-
-  message += `**🤖 AI Proposed Signal Details:**\n`;
-  message += `- Signal: \`${proposedSignal.signalIdentifier}\`\n`;
-  message += `- Asset: \`${proposedSignal.asset}\`\n`;
-  message += `- Trade: **${proposedSignal.tradeDirection}**\n`;
-  message += `- Timeframe: \`${proposedSignal.timeframe}\`\n`;
-  message += `- Entry Price: \`${proposedSignal.entryPrice}\`\n`;
-  message += `- Stoploss: \`${proposedSignal.sl}\`\n`;
-  message += `- TP1: \`${proposedSignal.tp1}\`\n`;
+  let message = `AI's Proposed Signal: ${proposedSignal.signalIdentifier}\n`;
+  message += `Trade: ${proposedSignal.tradeDirection}\n`;
+  message += `Timeframe: ${proposedSignal.timeframe}\n`;
+  message += `Entry Price: ${proposedSignal.entryPrice}\n`;
+  message += `Stop Loss (SL): ${proposedSignal.sl}\n`;
+  message += `Take Profit 1 (TP1): ${proposedSignal.tp1}\n`;
   if (proposedSignal.tp2) {
-    message += `- TP2: \`${proposedSignal.tp2}\`\n`;
+    message += `Take Profit 2 (TP2): ${proposedSignal.tp2}\n`;
   }
-  message += `- Exact Signal Timestamp (UTC): \`${formattedSignalTimestamp}\`\n`;
-  message += `- Reason: \`\`\`${proposedSignal.reason}\`\`\`\n\n`;
-
-  message += `**🧐 AI Validation Details:**\n`;
-  message += `- Confidence: **${validationOutcome.confidenceLevel}** ${validationOutcome.isValid ? '✅ (VALID)' : '❌ (INVALID)'}\n`;
-  message += `- Reasoning: \`\`\`${validationOutcome.reasoning}\`\`\`\n`;
+  message += `AI Determined Signal Time (UTC): ${formattedSignalTimestamp}\n`;
+  message += `AI's Reason for Proposal:\n${proposedSignal.reason}`;
 
   return message;
 }
 
 export async function sendDiscordNotification(
-  userInput: ProposeAndValidateTradingSignalInput,
+  userInput: ProposeAndValidateTradingSignalInput, // Keep userInput if needed for other context or logging, though not used in formatDiscordMessage
   aiOutput: ProposeAndValidateTradingSignalOutput
 ): Promise<void> {
   const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
@@ -53,7 +39,13 @@ export async function sendDiscordNotification(
     return;
   }
 
-  const messageContent = formatDiscordMessage(userInput, aiOutput);
+  // Only send notification if the AI deems the signal valid internally
+  if (!aiOutput.isValid) {
+    console.log('AI deemed the signal not strong enough. Skipping Discord notification.');
+    return;
+  }
+  
+  const messageContent = formatDiscordMessage(aiOutput);
 
   try {
     const response = await fetch(webhookUrl, {
@@ -70,11 +62,9 @@ export async function sendDiscordNotification(
       const errorBody = await response.text();
       console.error(`Error sending Discord notification: ${response.status} ${response.statusText}`, errorBody);
     } else {
-      console.log('Successfully sent signal to Discord.');
+      console.log('Successfully sent AI signal to Discord.');
     }
   } catch (error) {
     console.error('Failed to send Discord notification:', error);
   }
 }
-
-    
