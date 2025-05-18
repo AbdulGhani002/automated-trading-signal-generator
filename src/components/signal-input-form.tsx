@@ -14,14 +14,6 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Calendar } from "@/components/ui/calendar"
 import {
   Popover,
@@ -31,67 +23,60 @@ import {
 import { CalendarIcon, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
-import { useState, type Dispatch, type SetStateAction } from 'react';
+import type { Dispatch, type SetStateAction } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { handleValidateSignal } from '@/app/actions';
-import type { ValidateTradingSignalInput, ValidateTradingSignalOutput, Timeframe } from '@/lib/types';
-import { timeframes } from '@/lib/types';
-import { z as zod } from 'zod'; // Use a different alias to avoid conflict with type import
+import { handleProposeAndValidateSignal } from '@/app/actions';
+import type { ProposeAndValidateTradingSignalInput, ProposeAndValidateTradingSignalOutput } from '@/lib/types';
+import { z as zod } from 'zod';
 
 const formSchema = zod.object({
   asset: zod.string().min(1, 'Asset is required.'),
-  timeframe: zod.enum(timeframes, { required_error: 'Timeframe is required.' }),
-  entryPrice: zod.coerce.number().positive('Entry price must be positive.'),
-  tp: zod.coerce.number().positive('Take profit must be positive.'),
-  sl: zod.coerce.number().positive('Stop loss must be positive.'),
-  reason: zod.string().min(1, 'Reason is required.'),
   timestamp: zod.date({ required_error: 'Timestamp is required.' }),
 });
 
 type SignalFormValues = z.infer<typeof formSchema>;
 
 interface SignalInputFormProps {
-  setValidationResult: Dispatch<SetStateAction<ValidateTradingSignalOutput | null>>;
+  setAiResponse: Dispatch<SetStateAction<ProposeAndValidateTradingSignalOutput | null>>;
   setIsLoading: Dispatch<SetStateAction<boolean>>;
+  // Callback to pass the input that initiated the AI call to the parent
+  onFormSubmit: (input: ProposeAndValidateTradingSignalInput) => void;
 }
 
-export function SignalInputForm({ setValidationResult, setIsLoading }: SignalInputFormProps) {
+export function SignalInputForm({ setAiResponse, setIsLoading, onFormSubmit }: SignalInputFormProps) {
   const { toast } = useToast();
   const form = useForm<SignalFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       asset: '',
-      timeframe: '1H',
-      entryPrice: undefined,
-      tp: undefined,
-      sl: undefined,
-      reason: '',
       timestamp: new Date(),
     },
   });
 
   async function onSubmit(values: SignalFormValues) {
     setIsLoading(true);
-    setValidationResult(null);
+    setAiResponse(null);
 
-    const inputForAI: ValidateTradingSignalInput = {
+    const inputForAI: ProposeAndValidateTradingSignalInput = {
       ...values,
       timestamp: values.timestamp.toISOString(),
     };
 
-    const result = await handleValidateSignal(inputForAI);
+    onFormSubmit(inputForAI); // Pass input to parent before AI call
+
+    const result = await handleProposeAndValidateSignal(inputForAI);
 
     if (result.success && result.data) {
-      setValidationResult(result.data);
+      setAiResponse(result.data);
       toast({
-        title: 'Signal Validated',
-        description: `AI confidence: ${result.data.confidenceLevel}`,
+        title: 'AI Proposal & Validation Complete',
+        description: `Proposed signal for ${result.data.proposedSignal.asset} is ${result.data.validationOutcome.isValid ? 'Valid' : 'Invalid'}. Confidence: ${result.data.validationOutcome.confidenceLevel}`,
       });
     } else {
       toast({
         variant: 'destructive',
-        title: 'Validation Failed',
-        description: result.error || 'Could not validate the signal.',
+        title: 'AI Processing Failed',
+        description: result.error || 'Could not get AI proposal and validation.',
       });
     }
     setIsLoading(false);
@@ -100,113 +85,29 @@ export function SignalInputForm({ setValidationResult, setIsLoading }: SignalInp
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <FormField
-            control={form.control}
-            name="asset"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Asset (e.g., AAPL, EUR/USD)</FormLabel>
-                <FormControl>
-                  <Input placeholder="AAPL" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="timeframe"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Timeframe</FormLabel>
-                <Select onValueChange={field.onChange} defaultValue={field.value}>
-                  <FormControl>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a timeframe" />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    {timeframes.map((tf) => (
-                      <SelectItem key={tf} value={tf}>{tf}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <FormField
-            control={form.control}
-            name="entryPrice"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Entry Price</FormLabel>
-                <FormControl>
-                  <Input type="number" step="any" placeholder="129.32" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="tp"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Take Profit (TP)</FormLabel>
-                <FormControl>
-                  <Input type="number" step="any" placeholder="135.00" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="sl"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Stop Loss (SL)</FormLabel>
-                <FormControl>
-                  <Input type="number" step="any" placeholder="126.00" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </div>
-        
         <FormField
           control={form.control}
-          name="reason"
+          name="asset"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Reason for Signal</FormLabel>
+              <FormLabel>Asset (e.g., AAPL, EUR/USD)</FormLabel>
               <FormControl>
-                <Textarea
-                  placeholder="RSI oversold + Bullish MACD crossover + price bouncing off support"
-                  className="resize-none"
-                  {...field}
-                />
+                <Input placeholder="AAPL" {...field} />
               </FormControl>
               <FormDescription>
-                Describe the technical indicators and conditions supporting this signal.
+                Enter the financial asset you are interested in.
               </FormDescription>
               <FormMessage />
             </FormItem>
           )}
         />
-
+        
         <FormField
           control={form.control}
           name="timestamp"
           render={({ field }) => (
             <FormItem className="flex flex-col">
-              <FormLabel>Timestamp (UTC)</FormLabel>
+              <FormLabel>Approximate Date/Time (UTC)</FormLabel>
               <Popover>
                 <PopoverTrigger asChild>
                   <FormControl>
@@ -244,7 +145,6 @@ export function SignalInputForm({ setValidationResult, setIsLoading }: SignalInp
                     }
                     initialFocus
                   />
-                  {/* Basic time input for simplicity, ideally use a time picker component */}
                   <div className="p-2 border-t border-border">
                     <Input
                       type="time"
@@ -262,14 +162,17 @@ export function SignalInputForm({ setValidationResult, setIsLoading }: SignalInp
                   </div>
                 </PopoverContent>
               </Popover>
+              <FormDescription>
+                AI will propose a signal around this date and time.
+              </FormDescription>
               <FormMessage />
             </FormItem>
           )}
         />
         
-        <Button type="submit" className="w-full md:w-auto" disabled={form.formState.isSubmitting}>
-          {form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Validate Signal with AI
+        <Button type="submit" className="w-full md:w-auto" disabled={form.formState.isSubmitting || setIsLoading === undefined}>
+          {(form.formState.isSubmitting) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          Get AI Trade Proposal & Validation
         </Button>
       </form>
     </Form>

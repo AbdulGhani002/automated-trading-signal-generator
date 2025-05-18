@@ -1,4 +1,4 @@
 import { config } from 'dotenv';
 config();
 
-import '@/ai/flows/validate-trading-signal.ts';
+import '@/ai/flows/propose-and-validate-trading-signal.ts';
