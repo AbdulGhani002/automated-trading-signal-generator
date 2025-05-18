@@ -4,14 +4,14 @@
 import type { ProposeAndValidateTradingSignalInput, ProposeAndValidateTradingSignalOutput } from '@/lib/types';
 
 function formatDiscordMessage(
-  userInput: ProposeAndValidateTradingSignalInput,
+  userInput: ProposeAndValidateTradingSignalInput, // userInput is kept for context if needed, though not directly used in the new format much
   aiOutput: ProposeAndValidateTradingSignalOutput
 ): string {
   const { proposedSignal, validationOutcome, summary } = aiOutput;
-  const { asset: userAsset, timestamp: userTimestamp } = userInput; // User's approximate input timestamp
+  const { asset: userAsset, timestamp: userTimestamp } = userInput;
 
-  const formattedUserTimestamp = new Date(userTimestamp).toUTCString();
-  const formattedSignalTimestamp = new Date(proposedSignal.timestamp).toUTCString(); // AI's exact signal timestamp
+  const formattedUserTimestamp = new Date(userTimestamp).toUTCString(); // User's approximate input timestamp
+  const formattedSignalTimestamp = new Date(proposedSignal.exactTimestamp).toUTCString(); // AI's exact signal timestamp
 
   let message = `**New AI Trade Signal & Validation** 🚀\n\n`;
 
@@ -22,18 +22,22 @@ function formatDiscordMessage(
   message += `- Approx. Timestamp (UTC): \`${formattedUserTimestamp}\`\n\n`;
 
   message += `**🤖 AI Proposed Signal Details:**\n`;
+  message += `- Signal: \`${proposedSignal.signalIdentifier}\`\n`;
   message += `- Asset: \`${proposedSignal.asset}\`\n`;
-  message += `- Exact Signal Timestamp (UTC): \`${formattedSignalTimestamp}\`\n`;
+  message += `- Trade: **${proposedSignal.tradeDirection}**\n`;
   message += `- Timeframe: \`${proposedSignal.timeframe}\`\n`;
   message += `- Entry Price: \`${proposedSignal.entryPrice}\`\n`;
-  message += `- Take Profit (TP): \`${proposedSignal.tp}\`\n`;
-  message += `- Stop Loss (SL): \`${proposedSignal.sl}\`\n`;
+  message += `- Stoploss: \`${proposedSignal.sl}\`\n`;
+  message += `- TP1: \`${proposedSignal.tp1}\`\n`;
+  if (proposedSignal.tp2) {
+    message += `- TP2: \`${proposedSignal.tp2}\`\n`;
+  }
+  message += `- Exact Signal Timestamp (UTC): \`${formattedSignalTimestamp}\`\n`;
   message += `- Reason: \`\`\`${proposedSignal.reason}\`\`\`\n\n`;
 
   message += `**🧐 AI Validation Details:**\n`;
   message += `- Confidence: **${validationOutcome.confidenceLevel}** ${validationOutcome.isValid ? '✅ (VALID)' : '❌ (INVALID)'}\n`;
   message += `- Reasoning: \`\`\`${validationOutcome.reasoning}\`\`\`\n`;
-  // Disclaimer removed as per request
 
   return message;
 }

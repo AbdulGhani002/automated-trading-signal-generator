@@ -2,11 +2,11 @@
 'use server';
 /**
  * @fileOverview This file contains the Genkit flow for proposing and validating trading signals using AI.
- * It now also includes a step to generate a concise summary of the findings.
+ * It generates a signal identifier, trade direction, entry, SL, up to two TPs, reason, and a concise summary.
  *
- * - proposeAndValidateTradingSignal - A function that first proposes a trading signal, then validates it, and finally summarizes it.
- * - ProposeAndValidateTradingSignalInput - The input type for the proposeAndValidateTradingSignal function.
- * - ProposeAndValidateTradingSignalOutput - The return type for the proposeAndValidateTradingSignal function, including a short summary.
+ * - proposeAndValidateTradingSignal - A function that proposes, validates, and summarizes a trading signal.
+ * - ProposeAndValidateTradingSignalInput - The input type.
+ * - ProposeAndValidateTradingSignalOutput - The return type, including a structured signal and summary.
  */
 
 import {ai} from '@/ai/genkit';
@@ -22,17 +22,21 @@ export type ProposeAndValidateTradingSignalInput = z.infer<typeof ProposeAndVali
 
 // Schema for the AI-generated signal parameters
 const ProposedSignalParametersSchema = z.object({
+  signalIdentifier: z.string().describe('A concise identifier for the signal, often including the asset and a descriptive tag (e.g., "AAPL - Momentum Surge", "EURUSD - Channel Bounce").'),
   timeframe: z.enum(timeframes).describe(`The AI-determined timeframe of the trading signal. Choose from: ${timeframes.join(', ')}`),
+  tradeDirection: z.enum(["BUY", "SELL"]).describe('The implied trade direction (BUY or SELL). This should be determined based on whether TP1 is above or below the entry price.'),
   entryPrice: z.number().describe('The AI-determined entry price of the trading signal.'),
-  tp: z.number().describe('The AI-determined take profit price for the signal.'),
+  tp1: z.number().describe('The AI-determined first take profit price for the signal.'),
+  tp2: z.number().optional().describe('The AI-determined second take profit price for the signal (optional).'),
   sl: z.number().describe('The AI-determined stop loss price for the signal.'),
-  reason: z.string().describe('The AI-generated reason for the trading signal (e.g., RSI oversold + Bullish MACD crossover + price bouncing off support).'),
+  reason: z.string().describe('The AI-generated reason for the trading signal (e.g., RSI oversold + Bullish MACD crossover + price bouncing off support). This should be concise.'),
+  exactTimestamp: z.string().describe('The AI-determined exact timestamp for the signal (UTC ISO format), which should be around the user-provided approximate timestamp.'),
 });
 
 // Schema for the full proposed signal, including original inputs for context
 const FullProposedSignalSchema = ProposedSignalParametersSchema.extend({
     asset: z.string().describe('The asset for the trading signal (e.g., AAPL or EUR/USD).'),
-    timestamp: z.string().describe('The AI-determined exact timestamp of the trading signal (UTC).'), // Note: This timestamp is now what the AI determines as optimal.
+    // exactTimestamp is already in ProposedSignalParametersSchema, renamed from 'timestamp'
 });
 export type FullProposedSignal = z.infer<typeof FullProposedSignalSchema>;
 
@@ -55,7 +59,7 @@ export type ValidationOutcome = z.infer<typeof ValidationOutcomeSchema>;
 
 // Schema for the summary message
 const SignalSummarySchema = z.object({
-    shortMessage: z.string().describe('A very concise (1-2 sentences) summary of the trading signal (asset, implied direction) and its validation (confidence, validity). Example: "High confidence BUY signal for AAPL at 175 (TP:180, SL:172). Validated." or "Low confidence SELL signal for EUR/USD. Not validated."')
+    shortMessage: z.string().describe('A very concise (1-2 sentences) summary of the trading signal (identifier, direction, entry, TP1, SL) and its validation (confidence, validity). Example: "AAPL - Momentum Surge: BUY @ 175 (TP1:180, SL:172). High confidence. Validated."')
 });
 export type SignalSummary = z.infer<typeof SignalSummarySchema>;
 
@@ -78,39 +82,46 @@ export async function proposeAndValidateTradingSignal(input: ProposeAndValidateT
 const generateSignalPrompt = ai.definePrompt({
   name: 'generateTradingSignalPrompt',
   input: {schema: ProposeAndValidateTradingSignalInputSchema},
-  output: {schema: ProposedSignalParametersSchema.extend({ timestamp: z.string().describe('The AI-determined exact timestamp for the signal (UTC ISO format), which should be around the user-provided approximate timestamp.') })}, // AI also determines the exact timestamp now
+  output: {schema: ProposedSignalParametersSchema },
   prompt: `You are an expert trading analyst. Based on the asset {{{asset}}} and the approximate date/time {{{timestamp}}}, propose a promising trading signal.
-You MUST determine the most suitable timeframe (from options: ${timeframes.join(', ')}), a specific entry price, a take profit (TP) level, a stop loss (SL) level, and the exact optimal timestamp (in UTC ISO format) for this signal.
-Also, provide a concise reason for this signal based on potential technical or fundamental market conditions you would expect around that time for the given asset.
-Ensure the TP/SL levels are reasonable and strategically placed relative to the entry price and chosen timeframe. Be realistic and base your proposal on common trading strategies.
-The user-provided timestamp is a general guide; your proposed signal MUST be for a specific point in time (exact timestamp) around or on that date that you deem optimal.
-Output the timeframe, entryPrice, tp, sl, reason, and the exact timestamp you determined for the signal.`,
+You MUST determine and output the following:
+1.  signalIdentifier: A concise identifier for the signal (e.g., "{{asset}} - Strategy Name").
+2.  timeframe: The most suitable timeframe (from options: ${timeframes.join(', ')}).
+3.  tradeDirection: "BUY" or "SELL". Determine this based on your analysis; generally, if your TP1 is above entry, it's BUY, if below, it's SELL.
+4.  entryPrice: A specific entry price.
+5.  tp1: A specific first take profit (TP1) level.
+6.  tp2: An optional second take profit (TP2) level. If not applicable, omit it.
+7.  sl: A specific stop loss (SL) level.
+8.  reason: A concise reason for this signal (technical/fundamental indicators).
+9.  exactTimestamp: The exact optimal timestamp (in UTC ISO format) for this signal, around or on the user-provided approximate timestamp.
+
+Ensure the TP/SL levels are reasonable and strategically placed. The user-provided timestamp is a general guide.
+Be precise and follow the requested output structure. For example:
+Asset: {{{asset}}}
+Approximate Timestamp: {{{timestamp}}}
+`,
 });
 
 // Prompt for validating the signal
 const validateSignalPrompt = ai.definePrompt({
   name: 'validateGeneratedSignalPrompt',
-  input: {schema: FullProposedSignalSchema},
+  input: {schema: FullProposedSignalSchema}, // Uses the full proposed signal structure
   output: {schema: ValidationOutcomeSchema},
-  prompt: `You are an AI assistant specialized in validating trading signals for financial assets. Your primary goal is to assess the confidence level of a given AI-generated trading signal based on its historical success rate under similar market conditions.
-
+  prompt: `You are an AI assistant specialized in validating trading signals for financial assets.
   Analyze the following AI-generated trading signal:
+  Signal Identifier: {{{signalIdentifier}}}
   Asset: {{{asset}}}
   Timeframe: {{{timeframe}}}
+  Trade Direction: {{{tradeDirection}}}
   Entry Price: {{{entryPrice}}}
-  Take Profit: {{{tp}}}
+  Take Profit 1: {{{tp1}}}
+  {{#if tp2}}Take Profit 2: {{{tp2}}}{{/if}}
   Stop Loss: {{{sl}}}
   AI-Generated Reason: {{{reason}}}
-  Exact Signal Timestamp (UTC): {{{timestamp}}}
+  Exact Signal Timestamp (UTC): {{{exactTimestamp}}}
 
-  Consider the following factors when determining the confidence level:
-  - Historical success rate of similar signals (same asset, timeframe, and technical indicators as described in the reason) under comparable market conditions around the given timestamp.
-  - Strength of the confluence of indicators supporting the signal (as per the AI-generated reason).
-  - Presence of any potential risks or uncertainties that could invalidate the signal.
-  - The realism and practicality of the proposed entry, TP, and SL levels.
-
-  Based on your analysis, provide a confidence level (High, Medium, or Low) and a detailed reasoning for your assessment. Also, indicate whether the signal is valid or not. A signal is deemed valid if the confidence level is Medium or High.
-  Be conservative in determining the validity of the trading signal.`,
+  Assess its confidence level (High, Medium, or Low) based on historical success rates under similar market conditions and the strength of indicators.
+  Provide detailed reasoning. Indicate if the signal is valid (Medium or High confidence). Be conservative.`,
 });
 
 // Prompt for summarizing the signal and validation
@@ -119,16 +130,19 @@ const summarizeSignalPrompt = ai.definePrompt({
     input: { schema: z.object({ proposedSignal: FullProposedSignalSchema, validationOutcome: ValidationOutcomeSchema }) },
     output: { schema: SignalSummarySchema },
     prompt: `Based on the following proposed trading signal and its validation, generate a very concise (1-2 sentences) summary message.
-This message should be suitable for a quick alert. Include the asset, implied direction (e.g., BUY if TP > entry, SELL if TP < entry), key price levels (entry, TP, SL), confidence, and validity.
+Format: "{{proposedSignal.signalIdentifier}}: {{proposedSignal.tradeDirection}} @ {{proposedSignal.entryPrice}} (TP1:{{proposedSignal.tp1}}{{#if proposedSignal.tp2}}, TP2:{{proposedSignal.tp2}}{{/if}}, SL:{{proposedSignal.sl}}). {{validationOutcome.confidenceLevel}} confidence. {{#if validationOutcome.isValid}}Validated.{{else}}Not validated.{{/if}}"
 
 Proposed Signal:
+Signal Identifier: {{{proposedSignal.signalIdentifier}}}
 Asset: {{{proposedSignal.asset}}}
 Timeframe: {{{proposedSignal.timeframe}}}
+Trade Direction: {{{proposedSignal.tradeDirection}}}
 Entry Price: {{{proposedSignal.entryPrice}}}
-Take Profit: {{{proposedSignal.tp}}}
+Take Profit 1: {{{proposedSignal.tp1}}}
+{{#if proposedSignal.tp2}}Take Profit 2: {{{proposedSignal.tp2}}}{{/if}}
 Stop Loss: {{{proposedSignal.sl}}}
 Reason: {{{proposedSignal.reason}}}
-Exact Signal Timestamp (UTC): {{{proposedSignal.timestamp}}}
+Exact Signal Timestamp (UTC): {{{proposedSignal.exactTimestamp}}}
 
 Validation Outcome:
 Confidence Level: {{{validationOutcome.confidenceLevel}}}
@@ -149,21 +163,24 @@ const proposeAndValidateTradingSignalFlow = ai.defineFlow(
   async (input) => {
     // Step 1: Generate signal parameters including the exact timestamp
     const generationResult = await generateSignalPrompt(input);
-    const proposedParamsAndTimestamp = generationResult.output;
+    const proposedParams = generationResult.output;
 
-    if (!proposedParamsAndTimestamp) {
-      throw new Error('AI failed to generate trading signal parameters and exact timestamp.');
+    if (!proposedParams) {
+      throw new Error('AI failed to generate trading signal parameters.');
     }
 
-    // Construct the full signal object for validation using the AI-determined exact timestamp
+    // Construct the full signal object for validation
     const fullProposedSignal: FullProposedSignal = {
       asset: input.asset, // Keep original asset from user input for clarity
-      timestamp: proposedParamsAndTimestamp.timestamp, // Use AI-determined exact timestamp
-      timeframe: proposedParamsAndTimestamp.timeframe,
-      entryPrice: proposedParamsAndTimestamp.entryPrice,
-      tp: proposedParamsAndTimestamp.tp,
-      sl: proposedParamsAndTimestamp.sl,
-      reason: proposedParamsAndTimestamp.reason,
+      signalIdentifier: proposedParams.signalIdentifier,
+      timeframe: proposedParams.timeframe,
+      tradeDirection: proposedParams.tradeDirection,
+      entryPrice: proposedParams.entryPrice,
+      tp1: proposedParams.tp1,
+      tp2: proposedParams.tp2,
+      sl: proposedParams.sl,
+      reason: proposedParams.reason,
+      exactTimestamp: proposedParams.exactTimestamp,
     };
 
     // Step 2: Validate the generated signal
