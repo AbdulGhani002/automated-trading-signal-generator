@@ -7,30 +7,33 @@ function formatDiscordMessage(
   userInput: ProposeAndValidateTradingSignalInput,
   aiOutput: ProposeAndValidateTradingSignalOutput
 ): string {
-  const { proposedSignal, validationOutcome } = aiOutput;
-  const { asset: userAsset, timestamp: userTimestamp } = userInput;
+  const { proposedSignal, validationOutcome, summary } = aiOutput;
+  const { asset: userAsset, timestamp: userTimestamp } = userInput; // User's approximate input timestamp
 
   const formattedUserTimestamp = new Date(userTimestamp).toUTCString();
-  const formattedSignalTimestamp = new Date(proposedSignal.timestamp).toUTCString();
+  const formattedSignalTimestamp = new Date(proposedSignal.timestamp).toUTCString(); // AI's exact signal timestamp
 
   let message = `**New AI Trade Signal & Validation** 🚀\n\n`;
-  message += `**User Input:**\n`;
+
+  message += `**✨ Quick Summary:**\n\`\`\`${summary.shortMessage}\`\`\`\n\n`;
+  
+  message += `**User Input Context:**\n`;
   message += `- Asset: \`${userAsset}\`\n`;
   message += `- Approx. Timestamp (UTC): \`${formattedUserTimestamp}\`\n\n`;
 
-  message += `**🤖 AI Proposed Signal:**\n`;
+  message += `**🤖 AI Proposed Signal Details:**\n`;
   message += `- Asset: \`${proposedSignal.asset}\`\n`;
-  message += `- Signal Timestamp (UTC): \`${formattedSignalTimestamp}\`\n`;
+  message += `- Exact Signal Timestamp (UTC): \`${formattedSignalTimestamp}\`\n`;
   message += `- Timeframe: \`${proposedSignal.timeframe}\`\n`;
   message += `- Entry Price: \`${proposedSignal.entryPrice}\`\n`;
   message += `- Take Profit (TP): \`${proposedSignal.tp}\`\n`;
   message += `- Stop Loss (SL): \`${proposedSignal.sl}\`\n`;
   message += `- Reason: \`\`\`${proposedSignal.reason}\`\`\`\n\n`;
 
-  message += `**🧐 AI Validation:**\n`;
+  message += `**🧐 AI Validation Details:**\n`;
   message += `- Confidence: **${validationOutcome.confidenceLevel}** ${validationOutcome.isValid ? '✅ (VALID)' : '❌ (INVALID)'}\n`;
-  message += `- Reasoning: \`\`\`${validationOutcome.reasoning}\`\`\`\n\n`;
-  message += `*Disclaimer: AI-generated content. Not financial advice.*`;
+  message += `- Reasoning: \`\`\`${validationOutcome.reasoning}\`\`\`\n`;
+  // Disclaimer removed as per request
 
   return message;
 }
@@ -56,12 +59,6 @@ export async function sendDiscordNotification(
       },
       body: JSON.stringify({
         content: messageContent,
-        // You can add embeds here for a richer message, e.g.:
-        // embeds: [{
-        //   title: `Signal for ${aiOutput.proposedSignal.asset}`,
-        //   description: messageContent,
-        //   color: validationOutcome.isValid ? 5814783 : 15548997, // Green for valid, Red for invalid
-        // }]
       }),
     });
 
@@ -75,3 +72,5 @@ export async function sendDiscordNotification(
     console.error('Failed to send Discord notification:', error);
   }
 }
+
+    

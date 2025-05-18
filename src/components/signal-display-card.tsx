@@ -1,11 +1,11 @@
+
 'use client';
 
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import type { ProposeAndValidateTradingSignalOutput, ProposeAndValidateTradingSignalInput } from '@/lib/types';
-import { AlertCircle, CheckCircle2, Wand2 } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Wand2, MessageSquareQuote } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { ClassValue} from "clsx"; // This import can be removed as cn is imported from utils
 
 interface SignalDisplayCardProps {
   userInput: ProposeAndValidateTradingSignalInput;
@@ -13,7 +13,7 @@ interface SignalDisplayCardProps {
 }
 
 export function SignalDisplayCard({ userInput, aiOutput }: SignalDisplayCardProps) {
-  const { proposedSignal, validationOutcome } = aiOutput;
+  const { proposedSignal, validationOutcome, summary } = aiOutput;
   const { asset: userAsset, timestamp: userTimestamp } = userInput;
 
   const { asset, timeframe, entryPrice, tp, sl, reason, timestamp: signalTimestamp } = proposedSignal;
@@ -23,8 +23,7 @@ export function SignalDisplayCard({ userInput, aiOutput }: SignalDisplayCardProp
     year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short', timeZone: 'UTC'
   });
 
-  // Assuming signalTimestamp from proposedSignal is what we want to display for the signal itself
-   const formattedSignalTimestamp = new Date(signalTimestamp).toLocaleString('en-US', {
+  const formattedSignalTimestamp = new Date(signalTimestamp).toLocaleString('en-US', {
     year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short', timeZone: 'UTC'
   });
 
@@ -52,11 +51,24 @@ export function SignalDisplayCard({ userInput, aiOutput }: SignalDisplayCardProp
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
+        {/* AI Short Summary Section */}
+        {summary && summary.shortMessage && (
+          <div className="p-4 border rounded-lg bg-primary/5">
+            <div className="flex items-center mb-2">
+              <MessageSquareQuote className="h-6 w-6 mr-2 text-primary" />
+              <h3 className="text-xl font-semibold text-primary">Quick Summary</h3>
+            </div>
+            <p className="text-foreground italic">{summary.shortMessage}</p>
+          </div>
+        )}
+        
+        <hr />
+
         {/* AI Proposed Signal Section */}
         <div className="p-4 border rounded-lg bg-card/50">
           <div className="flex items-center mb-3">
             <Wand2 className="h-6 w-6 mr-2 text-primary" />
-            <h3 className="text-xl font-semibold text-primary">AI's Proposed Signal</h3>
+            <h3 className="text-xl font-semibold text-primary">AI's Proposed Signal Details</h3>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 text-sm">
             <div><strong>Asset:</strong> {asset}</div>
@@ -64,7 +76,7 @@ export function SignalDisplayCard({ userInput, aiOutput }: SignalDisplayCardProp
             <div><strong>Entry Price:</strong> {entryPrice}</div>
             <div><strong>Take Profit (TP):</strong> {tp}</div>
             <div><strong>Stop Loss (SL):</strong> {sl}</div>
-            <div><strong>Signal Timestamp (UTC):</strong> {formattedSignalTimestamp}</div>
+            <div><strong>AI Determined Signal Timestamp (UTC):</strong> {formattedSignalTimestamp}</div>
           </div>
           <div className="mt-3">
             <h4 className="font-semibold mb-1">AI's Reason for Proposal:</h4>
@@ -76,7 +88,7 @@ export function SignalDisplayCard({ userInput, aiOutput }: SignalDisplayCardProp
 
         {/* AI Validation Section */}
         <div className="p-4 border rounded-lg bg-card/50">
-          <h3 className="text-xl font-semibold text-primary mb-3">AI's Validation of Proposal</h3>
+          <h3 className="text-xl font-semibold text-primary mb-3">AI's Validation Details</h3>
           <div className="flex items-center mb-2">
             <strong className="mr-2">Confidence Level:</strong>
             <Badge variant={confidenceBadgeVariant} className="text-sm px-2 py-0.5">
@@ -89,9 +101,11 @@ export function SignalDisplayCard({ userInput, aiOutput }: SignalDisplayCardProp
       </CardContent>
       <CardFooter>
         <p className="text-xs text-muted-foreground">
-          This proposal and validation are AI-generated and for informational purposes only. Not financial advice.
+          Trading involves risks. Please consider your own risk tolerance and financial situation.
         </p>
       </CardFooter>
     </Card>
   );
 }
+
+    
